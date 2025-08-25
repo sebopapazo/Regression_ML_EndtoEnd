@@ -1,0 +1,19 @@
+[project]
+name = "housing-regression-mle"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "evidently>=0.7.12",
+    "fastapi>=0.116.1",
+    "great-expectations>=1.5.9",
+    "lightgbm>=4.6.0",
+    "matplotlib>=3.10.5",
+    "mlflow>=3.3.1",
+    "numpy>=2.3.2",
+    "pandas>=2.1.1",
+    "scikit-learn>=1.7.1",
+    "streamlit>=1.48.1",
+    "xgboost>=3.0.4",
+]
