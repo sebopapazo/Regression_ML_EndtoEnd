@@ -1,6 +1,0 @@
-artifact_location: /Users/riadanas/Desktop/housing regression MLE/mlruns/517683228267271597
-creation_time: 1756388438862
-experiment_id: '517683228267271597'
-last_update_time: 1756388438862
-lifecycle_stage: active
-name: xgboost_optuna_housing
