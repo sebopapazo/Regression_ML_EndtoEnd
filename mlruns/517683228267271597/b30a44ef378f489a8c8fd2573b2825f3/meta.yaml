@@ -1,0 +1,14 @@
+artifact_uri: /Users/riadanas/Desktop/housing regression MLE/mlruns/517683228267271597/b30a44ef378f489a8c8fd2573b2825f3/artifacts
+end_time: 1756388591647
+entry_point_name: ''
+experiment_id: '517683228267271597'
+lifecycle_stage: active
+run_id: b30a44ef378f489a8c8fd2573b2825f3
+run_name: clumsy-quail-259
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756388583839
+status: 3
+tags: []
+user_id: riadanas

@@ -1,0 +1,14 @@
+artifact_uri: /Users/riadanas/Desktop/housing regression MLE/mlruns/517683228267271597/56e7d0486f6a4897b0e8e4fca6df6ed6/artifacts
+end_time: 1756388492653
+entry_point_name: ''
+experiment_id: '517683228267271597'
+lifecycle_stage: active
+run_id: 56e7d0486f6a4897b0e8e4fca6df6ed6
+run_name: dashing-mink-105
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756388482947
+status: 3
+tags: []
+user_id: riadanas

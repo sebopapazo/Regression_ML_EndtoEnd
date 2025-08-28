@@ -1,0 +1,14 @@
+artifact_uri: /Users/riadanas/Desktop/housing regression MLE/mlruns/517683228267271597/f96af38f7eb840288e647ffe2e1bd7ad/artifacts
+end_time: 1756388450207
+entry_point_name: ''
+experiment_id: '517683228267271597'
+lifecycle_stage: active
+run_id: f96af38f7eb840288e647ffe2e1bd7ad
+run_name: big-quail-482
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756388443521
+status: 3
+tags: []
+user_id: riadanas

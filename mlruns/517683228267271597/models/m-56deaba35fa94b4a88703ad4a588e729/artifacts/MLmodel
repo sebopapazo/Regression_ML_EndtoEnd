@@ -1,0 +1,22 @@
+artifact_path: /Users/riadanas/Desktop/housing regression MLE/mlruns/517683228267271597/models/m-56deaba35fa94b4a88703ad4a588e729/artifacts
+flavors:
+  python_function:
+    data: model.xgb
+    env:
+      conda: conda.yaml
+      virtualenv: python_env.yaml
+    loader_module: mlflow.xgboost
+    python_version: 3.11.12
+  xgboost:
+    code: null
+    data: model.xgb
+    model_class: xgboost.sklearn.XGBRegressor
+    model_format: xgb
+    xgb_version: 3.0.4
+mlflow_version: 3.3.1
+model_id: m-56deaba35fa94b4a88703ad4a588e729
+model_size_bytes: 35801629
+model_uuid: m-56deaba35fa94b4a88703ad4a588e729
+prompts: null
+run_id: 86156a323b124ab3a82140f53d602c13
+utc_time_created: '2025-08-28 13:43:32.389814'

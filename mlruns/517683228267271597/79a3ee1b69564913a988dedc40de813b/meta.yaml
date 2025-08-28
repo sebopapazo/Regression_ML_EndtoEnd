@@ -1,0 +1,14 @@
+artifact_uri: /Users/riadanas/Desktop/housing regression MLE/mlruns/517683228267271597/79a3ee1b69564913a988dedc40de813b/artifacts
+end_time: 1756388561304
+entry_point_name: ''
+experiment_id: '517683228267271597'
+lifecycle_stage: active
+run_id: 79a3ee1b69564913a988dedc40de813b
+run_name: likeable-duck-139
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1756388544629
+status: 3
+tags: []
+user_id: riadanas
