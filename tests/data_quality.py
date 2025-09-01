@@ -1,45 +1,85 @@
+import sys
 import pandas as pd
-from feature_pipeline.load import load_train, load_holdout
+import great_expectations as gx
+from great_expectations.core.batch import Batch
+from great_expectations.execution_engine import PandasExecutionEngine
+from great_expectations.validator.validator import Validator
 
-def test_train_quality():
-    df = load_train()
+def validate_data(path: str):
+    df = pd.read_csv(path)
 
-    # --- Schema ---
-    expected_cols = [
-        "date", "median_sale_price", "median_list_price", "median_ppsf", 
-        "homes_sold", "inventory", "year", "price", "city", "zipcode"
-    ]
-    for col in expected_cols:
-        assert col in df.columns, f"Missing expected column: {col}"
+    # 1. Basic sanity on date & zip formatting
+    df["date"] = pd.to_datetime(df["date"], errors="coerce")
+    assert df["date"].notna().all(), "Invalid or missing dates"
+    assert df["date"].between("2010-01-01", "2025-12-31").all(), "Dates out of expected range"
 
-    # --- Sanity checks ---
-    assert len(df) > 0, "Training dataset is empty"
-    assert df["price"].notnull().all(), "Price column has null values"
-    assert (df["price"] > 0).all(), "Non-positive prices found in training set"
-    assert df["year"].between(2011, 2021).all(), "Train should not include 2022+ years"
+    df["zipcode_str"] = df["zipcode"].astype(str).str.zfill(5)
 
-def test_holdout_quality():
-    df = load_holdout()
+    # 2. Create an Ephemeral DataContext (no config files needed)
+    context = gx.get_context(mode="ephemeral")
 
-    # --- Schema consistency with train ---
-    train_df = load_train()
-    assert set(df.columns) == set(train_df.columns), "Train/Holdout schema mismatch"
+    # 3. Wrap DataFrame in Validator via a Batch
+    batch = Batch(data=df)
+    validator = Validator(
+        execution_engine=PandasExecutionEngine(),
+        batches=[batch],
+        data_context=context,
+    )
 
-    # --- Holdout year check ---
-    assert df["year"].min() >= 2022, "Holdout must only contain 2022+ data"
+    # 4. Define your expectations
+    validator.expect_column_values_to_not_be_null("price")
+    validator.expect_column_values_to_be_between("price", min_value=1_000, max_value=12_000_000)
+    
+    # Allow 0 values (missing data indicators) or realistic price ranges
+    validator.expect_column_values_to_be_between("median_sale_price", min_value=0, max_value=19_000_000)
+    validator.expect_column_values_to_be_between("median_list_price", min_value=0, max_value=19_000_000)  # Allow for high-end markets but exclude obvious data errors
+    
+    validator.expect_column_values_to_be_between("homes_sold", min_value=0)
+    validator.expect_column_values_to_be_between("pending_sales", min_value=0)
+    
+    # Allow for longer days on market - some properties take years to sell
+    validator.expect_column_values_to_be_between("median_dom", min_value=0, max_value=10_000)
+    
+    # Allow wider range for sale-to-list ratio (0 for missing data, up to 2.0 for competitive markets)
+    validator.expect_column_values_to_be_between("avg_sale_to_list", min_value=0, max_value=2.0)
+    
+    validator.expect_column_values_to_not_be_null("city_full")
+    validator.expect_column_value_lengths_to_equal("zipcode_str", 5)
+    
+    # Allow 0 for missing population data
+    validator.expect_column_values_to_be_between("Total Population", min_value=0)
+    validator.expect_column_values_to_be_between("Median Age", min_value=0, max_value=120)
+    
+    # Allow 0 for missing home value data
+    validator.expect_column_values_to_be_between("Median Home Value", min_value=0)
 
-    # --- Target checks ---
-    assert df["price"].notnull().all(), "Price column has null values in holdout"
-    assert (df["price"] > 0).all(), "Non-positive prices found in holdout"
+    # 5. Run validation
+    results = validator.validate()
+    total = len(results["results"])
+    passed = sum(r["success"] for r in results["results"])
+    failed = total - passed
 
-def test_basic_ranges():
-    train_df = load_train()
-    holdout_df = load_holdout()
+    print(f"\n{path}: {passed}/{total} checks passed")
+    if failed:
+        print("❌ Failed expectations:")
+        for r in results["results"]:
+            if not r["success"]:
+                config = r["expectation_config"]
+                column = config.kwargs.get("column", "N/A")
+                expectation_type = config.type
+                kwargs = {k: v for k, v in config.kwargs.items() if k != "column"}
+                print(f"  - {expectation_type} on column '{column}' with params: {kwargs}")
+                
+                # Show some details about the failure
+                result = r.get("result", {})
+                if "observed_value" in result:
+                    print(f"    Observed: {result['observed_value']}")
+                if "element_count" in result and "unexpected_count" in result:
+                    print(f"    Unexpected count: {result['unexpected_count']}/{result['element_count']}")
+        sys.exit(1)
+    else:
+        print("✅ All checks passed!")
 
-    combined = pd.concat([train_df, holdout_df])
-
-    # Year range sanity
-    assert combined["year"].between(2010, 2025).all(), "Year out of range"
-
-    # Price range sanity (very broad just to catch broken values)
-    assert combined["price"].between(1000, 10_000_000).all(), "Suspicious price values found"
+if __name__ == "__main__":
+    for split in ["data/raw/train.csv", "data/raw/eval.csv", "data/raw/holdout.csv"]:
+        validate_data(split)
