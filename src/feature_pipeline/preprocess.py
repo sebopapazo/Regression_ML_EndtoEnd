@@ -9,20 +9,23 @@
 
 """
 
-import pandas as pd
+"""
+Preprocessing: city normalization + (optional) lat/lng merge, duplicate drop, outlier removal.
+
+- Production defaults read from data/raw/ and write to data/processed/
+- Tests can override `raw_dir`, `processed_dir`, and pass `metros_path=None`
+  to skip merge safely without touching disk assets.
+"""
+
 import re
 from pathlib import Path
+import pandas as pd
 
-# ----------------------------
-# Path setup
-# ----------------------------
 RAW_DIR = Path("data/raw")
 PROCESSED_DIR = Path("data/processed")
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-# ----------------------------
-# City name mapping (manual fixes)
-# ----------------------------
+# Manual fixes for known mismatches (normalized form)
 CITY_MAPPING = {
     "las vegas-henderson-paradise": "las vegas-henderson-north las vegas",
     "denver-aurora-lakewood": "denver-aurora-centennial",
@@ -34,51 +37,53 @@ CITY_MAPPING = {
     "atlanta-sandy springs-alpharetta": "atlanta-sandy springs-roswell",
 }
 
-# ----------------------------
-# Normalization utilities
-# ----------------------------
+
 def normalize_city(s: str) -> str:
-    """Normalize city names: lowercase, strip, unify dashes."""
+    """Lowercase, strip, unify dashes. Safe for NA."""
     if pd.isna(s):
         return s
-    s = s.strip().lower()
-    # replace en-dash, em-dash, and hyphen with plain "-"
-    s = re.sub(r"[–—-]", "-", s)
-    # collapse multiple spaces
-    s = re.sub(r"\s+", " ", s)
+    s = str(s).strip().lower()
+    s = re.sub(r"[–—-]", "-", s)          # unify dashes
+    s = re.sub(r"\s+", " ", s)            # collapse spaces
     return s
 
-# ----------------------------
-# Core cleaning functions
-# ----------------------------
-def clean_and_merge(df: pd.DataFrame, metros_path: str = "data/raw/usmetros.csv") -> pd.DataFrame:
-    """Normalize city names, apply mapping, merge lat/lng from metros dataset."""
-    metros = pd.read_csv(metros_path)
 
-    # Normalize city_full + metro_full
+def clean_and_merge(df: pd.DataFrame, metros_path: str | None = "data/raw/usmetros.csv") -> pd.DataFrame:
+    """
+    Normalize city names, optionally merge lat/lng from metros dataset.
+    If `city_full` column or `metros_path` is missing, skip gracefully.
+    """
+    if "city_full" not in df.columns:
+        print("⚠️  Skipping city merge: no 'city_full' column present.")
+        return df
+
+    # Normalize city_full
     df["city_full"] = df["city_full"].apply(normalize_city)
-    metros["metro_full"] = metros["metro_full"].apply(normalize_city)
-
-    # Apply city mapping (normalized)
+    # Apply mapping
     norm_mapping = {normalize_city(k): normalize_city(v) for k, v in CITY_MAPPING.items()}
     df["city_full"] = df["city_full"].replace(norm_mapping)
 
-    # Merge with lat/lng
-    df = df.merge(
-        metros[["metro_full", "lat", "lng"]],
-        how="left",
-        left_on="city_full",
-        right_on="metro_full"
-    )
-    df.drop(columns=["metro_full"], inplace=True)
+    # If no metros file provided / exists, skip merge
+    if not metros_path or not Path(metros_path).exists():
+        print("⚠️  Skipping lat/lng merge: metros file not provided or not found.")
+        return df
 
-    # Log missing matches
+    # Merge lat/lng
+    metros = pd.read_csv(metros_path)
+    if "metro_full" not in metros.columns or not {"lat", "lng"}.issubset(metros.columns):
+        print("⚠️  Skipping lat/lng merge: metros file missing required columns.")
+        return df
+
+    metros["metro_full"] = metros["metro_full"].apply(normalize_city)
+    df = df.merge(metros[["metro_full", "lat", "lng"]],
+                  how="left", left_on="city_full", right_on="metro_full")
+    df.drop(columns=["metro_full"], inplace=True, errors="ignore")
+
     missing = df[df["lat"].isnull()]["city_full"].unique()
     if len(missing) > 0:
-        print("⚠️ Still missing lat/lng for:", missing)
+        print("⚠️  Still missing lat/lng for:", missing)
     else:
-        print("✅ All cities matched with metros dataset")
-
+        print("✅ All cities matched with metros dataset.")
     return df
 
 
@@ -93,6 +98,8 @@ def drop_duplicates(df: pd.DataFrame) -> pd.DataFrame:
 
 def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
     """Remove extreme outliers in median_list_price (> 19M)."""
+    if "median_list_price" not in df.columns:
+        return df
     before = df.shape[0]
     df = df[df["median_list_price"] <= 19_000_000].copy()
     after = df.shape[0]
@@ -100,24 +107,39 @@ def remove_outliers(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def preprocess_split(split: str):
-    """Run preprocessing pipeline for a given split (train/eval/holdout)."""
-    path = RAW_DIR / f"{split}.csv"
+def preprocess_split(
+    split: str,
+    raw_dir: Path | str = RAW_DIR,
+    processed_dir: Path | str = PROCESSED_DIR,
+    metros_path: str | None = "data/raw/usmetros.csv",
+) -> pd.DataFrame:
+    """Run preprocessing for a split and save to processed_dir."""
+    raw_dir = Path(raw_dir)
+    processed_dir = Path(processed_dir)
+    processed_dir.mkdir(parents=True, exist_ok=True)
+
+    path = raw_dir / f"{split}.csv"
     df = pd.read_csv(path)
 
-    df = clean_and_merge(df)
+    df = clean_and_merge(df, metros_path=metros_path)
     df = drop_duplicates(df)
     df = remove_outliers(df)
 
-    out_path = PROCESSED_DIR / f"cleaning_{split}.csv"
+    out_path = processed_dir / f"cleaning_{split}.csv"
     df.to_csv(out_path, index=False)
     print(f"✅ Preprocessed {split} saved to {out_path} ({df.shape})")
-
     return df
 
-# ----------------------------
-# Main runner
-# ----------------------------
+
+def run_preprocess(
+    splits: tuple[str, ...] = ("train", "eval", "holdout"),
+    raw_dir: Path | str = RAW_DIR,
+    processed_dir: Path | str = PROCESSED_DIR,
+    metros_path: str | None = "data/raw/usmetros.csv",
+):
+    for s in splits:
+        preprocess_split(s, raw_dir=raw_dir, processed_dir=processed_dir, metros_path=metros_path)
+
+
 if __name__ == "__main__":
-    for split in ["train", "eval", "holdout"]:
-        preprocess_split(split)
+    run_preprocess()
