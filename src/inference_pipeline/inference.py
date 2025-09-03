@@ -1,10 +1,10 @@
 """
 Inference pipeline for Housing Regression MLE.
 
-- Loads the trained/tuned model from disk.
-- Applies the same preprocessing + feature engineering steps as training.
+- Loads the trained/tuned model and saved encoders.
+- Applies preprocessing + feature engineering (using fitted encoders).
 - Returns predictions for new data.
-- Can be used programmatically (predict(df)) or via CLI.
+- Can be run programmatically (predict(df)) or via CLI.
 """
 
 from __future__ import annotations
@@ -13,23 +13,34 @@ from pathlib import Path
 import pandas as pd
 from joblib import load
 
-# Import preprocessing + feature engineering
+# Import preprocessing + feature engineering helpers
 from src.feature_pipeline.preprocess import clean_and_merge, drop_duplicates, remove_outliers
-from src.feature_pipeline.feature_engineering import add_date_features, frequency_encode, target_encode, drop_unused_columns
-
+from src.feature_pipeline.feature_engineering import add_date_features, drop_unused_columns
 
 # ----------------------------
 # Default paths
 # ----------------------------
-DEFAULT_MODEL = Path("models/xgb_best_model.pkl")
-DEFAULT_OUTPUT = Path("predictions.csv")
+# Resolve project root (two levels up from this file)
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+DEFAULT_MODEL = PROJECT_ROOT / "models" / "xgb_best_model.pkl"
+DEFAULT_FREQ_ENCODER = PROJECT_ROOT / "models" / "freq_encoder.pkl"
+DEFAULT_TARGET_ENCODER = PROJECT_ROOT / "models" / "target_encoder.pkl"
+DEFAULT_OUTPUT = PROJECT_ROOT / "predictions.csv"
+
+print("📂 Inference using project root:", PROJECT_ROOT)
 
 
 # ----------------------------
 # Core inference function
 # ----------------------------
-def predict(input_df: pd.DataFrame, model_path: Path | str = DEFAULT_MODEL) -> pd.DataFrame:
-    # Step 1: Preprocess (same as training)
+def predict(
+    input_df: pd.DataFrame,
+    model_path: Path | str = DEFAULT_MODEL,
+    freq_encoder_path: Path | str = DEFAULT_FREQ_ENCODER,
+    target_encoder_path: Path | str = DEFAULT_TARGET_ENCODER,
+) -> pd.DataFrame:
+    # Step 1: Preprocess
     df = clean_and_merge(input_df)
     df = drop_duplicates(df)
     df = remove_outliers(df)
@@ -37,22 +48,25 @@ def predict(input_df: pd.DataFrame, model_path: Path | str = DEFAULT_MODEL) -> p
     # Step 2: Feature engineering
     df = add_date_features(df)
 
-    # For inference, we need consistency:
-    # Use training data encoders to fit frequency/target encodings.
-    # Here we reload train/eval to build encoders.
-    train_df = pd.read_csv("/Users/riadanas/Desktop/housing regression MLE/data/processed/feature_engineered_train.csv")
-    eval_df = pd.read_csv("/Users/riadanas/Desktop/housing regression MLE/data/processed/feature_engineered_eval.csv")
+    # Load encoders
+    if Path(freq_encoder_path).exists():
+        freq_map = load(freq_encoder_path)
+        if "zipcode" in df.columns:
+            df["zipcode_freq"] = df["zipcode"].map(freq_map).fillna(0)
+            df = df.drop(columns=["zipcode"], errors="ignore")
 
-    # Frequency encode zipcode
-    train_df, eval_df = frequency_encode(train_df, eval_df, "zipcode")
-    _, df = frequency_encode(train_df, df, "zipcode")
-
-    # Target encode city_full
-    train_df, eval_df = target_encode(train_df, eval_df, "city_full", "price")
-    _, df = target_encode(train_df, df, "city_full", "price")
+    if Path(target_encoder_path).exists():
+        target_encoder = load(target_encoder_path)
+        if "city_full" in df.columns:
+            df["city_full_encoded"] = target_encoder.transform(df["city_full"])
+            df = df.drop(columns=["city_full"], errors="ignore")
 
     # Drop unused/leakage columns
-    df, _ = drop_unused_columns(df.copy(), eval_df.copy())
+    df, _ = drop_unused_columns(df.copy(), df.copy())
+
+    # Drop target column if present (prevents feature_names mismatch)
+    if "price" in df.columns:
+        df = df.drop(columns=["price"])
 
     # Step 3: Load model
     model = load(model_path)
@@ -72,16 +86,18 @@ if __name__ == "__main__":
     parser.add_argument("--input", type=str, required=True, help="Path to input CSV file")
     parser.add_argument("--output", type=str, default=str(DEFAULT_OUTPUT), help="Path to save predictions CSV")
     parser.add_argument("--model", type=str, default=str(DEFAULT_MODEL), help="Path to trained model file")
+    parser.add_argument("--freq_encoder", type=str, default=str(DEFAULT_FREQ_ENCODER), help="Path to frequency encoder pickle")
+    parser.add_argument("--target_encoder", type=str, default=str(DEFAULT_TARGET_ENCODER), help="Path to target encoder pickle")
 
     args = parser.parse_args()
 
-    input_path = Path(args.input)
-    output_path = Path(args.output)
-    model_path = Path(args.model)
+    raw_df = pd.read_csv(args.input)
+    preds_df = predict(
+        raw_df,
+        model_path=args.model,
+        freq_encoder_path=args.freq_encoder,
+        target_encoder_path=args.target_encoder,
+    )
 
-    raw_df = pd.read_csv(input_path)
-    preds_df = predict(raw_df, model_path=model_path)
-
-    preds_df.to_csv(output_path, index=False)
-    print(f"✅ Predictions saved to {output_path}")
-
+    preds_df.to_csv(args.output, index=False)
+    print(f"✅ Predictions saved to {args.output}")
