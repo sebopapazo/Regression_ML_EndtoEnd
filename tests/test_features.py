@@ -74,18 +74,20 @@ def test_add_date_features_extracts_parts():
 def test_frequency_encode_counts_values():
     train = pd.DataFrame({"zipcode": [1000, 1000, 2000]})
     eval = pd.DataFrame({"zipcode": [1000, 3000]})
-    train, eval = frequency_encode(train, eval, "zipcode")
+    train, eval, freq_map = frequency_encode(train, eval, "zipcode")
     assert train["zipcode_freq"].tolist() == [2, 2, 1]
     assert eval["zipcode_freq"].tolist() == [2, 0]
+    assert isinstance(freq_map, pd.Series)
     print("✅ Frequency encoding test passed")
 
 
 def test_target_encode_applies_mapping():
     train = pd.DataFrame({"city_full": ["A", "B", "A"], "price": [100, 200, 300]})
-    eval = pd.DataFrame({"city_full": ["A", "B"]})  # ensure seen categories
-    train, eval = target_encode(train, eval, "city_full", "price")
+    eval = pd.DataFrame({"city_full": ["A", "B"]})
+    train, eval, te = target_encode(train, eval, "city_full", "price")
     assert "city_full_encoded" in train.columns
     assert eval["city_full_encoded"].notnull().all()
+    assert te is not None
     print("✅ Target encoding test passed")
 
 
@@ -103,36 +105,30 @@ def test_drop_unused_columns_removes_leakage():
 
 
 # =========================
-# Optional: end-to-end integration (safe tmp dir)
+# integration test
 # =========================
 def test_full_pipeline_integration(tmp_path):
-    # 1) Raw dummy data
     raw = pd.DataFrame({
         "date": pd.date_range("2018-01-01", periods=6, freq="365D"),
         "price": [100, 200, 300, 400, 500, 600],
         "zipcode": [1000, 2000, 1000, 2000, 1000, 2000],
-        "city_full": ["A", "B", "A", "B", "A", "B"],  # seen in train & eval
+        "city_full": ["A", "B", "A", "B", "A", "B"],
         "median_list_price": [150_000]*6
     })
     raw_path = tmp_path / "raw.csv"
     raw.to_csv(raw_path, index=False)
 
-    # 2) Split into temp dir
     train, eval, holdout = load_and_split_data(raw_path=str(raw_path), output_dir=tmp_path)
 
-    # 3) Preprocess (skip metros to avoid ext file dependency)
-    #    Save to a temp processed dir
     processed_dir = tmp_path / "processed"
     processed_dir.mkdir(exist_ok=True)
-    train.to_csv(tmp_path / "train.csv", index=False)  # ensure files exist for API parity
+    train.to_csv(tmp_path / "train.csv", index=False)
     eval.to_csv(tmp_path / "eval.csv", index=False)
 
-    # Use function that reads from dirs to mimic real flow
     preprocess_split("train", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None)
     preprocess_split("eval", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None)
 
-    # 4) Feature engineering into temp processed dir
-    out_train, out_eval = run_feature_engineering(
+    out_train, out_eval, freq_map, te = run_feature_engineering(
         in_train_path=processed_dir / "cleaning_train.csv",
         in_eval_path=processed_dir / "cleaning_eval.csv",
         output_dir=processed_dir,
@@ -140,4 +136,6 @@ def test_full_pipeline_integration(tmp_path):
 
     assert {"year", "zipcode_freq", "city_full_encoded"}.issubset(out_train.columns)
     assert {"year", "zipcode_freq", "city_full_encoded"}.issubset(out_eval.columns)
+    assert freq_map is not None
+    assert te is not None
     print("✅ Full pipeline integration test passed")

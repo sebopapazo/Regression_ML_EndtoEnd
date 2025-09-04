@@ -53,8 +53,9 @@ def clean_and_merge(df: pd.DataFrame, metros_path: str | None = "data/raw/usmetr
     Normalize city names, optionally merge lat/lng from metros dataset.
     If `city_full` column or `metros_path` is missing, skip gracefully.
     """
+
     if "city_full" not in df.columns:
-        print("⚠️  Skipping city merge: no 'city_full' column present.")
+        print("⚠️ Skipping city merge: no 'city_full' column present.")
         return df
 
     # Normalize city_full
@@ -63,15 +64,20 @@ def clean_and_merge(df: pd.DataFrame, metros_path: str | None = "data/raw/usmetr
     norm_mapping = {normalize_city(k): normalize_city(v) for k, v in CITY_MAPPING.items()}
     df["city_full"] = df["city_full"].replace(norm_mapping)
 
+    # 🚨 If lat/lng already present, skip merge
+    if {"lat", "lng"}.issubset(df.columns):
+        print("⚠️ Skipping lat/lng merge: already present in DataFrame.")
+        return df
+
     # If no metros file provided / exists, skip merge
     if not metros_path or not Path(metros_path).exists():
-        print("⚠️  Skipping lat/lng merge: metros file not provided or not found.")
+        print("⚠️ Skipping lat/lng merge: metros file not provided or not found.")
         return df
 
     # Merge lat/lng
     metros = pd.read_csv(metros_path)
     if "metro_full" not in metros.columns or not {"lat", "lng"}.issubset(metros.columns):
-        print("⚠️  Skipping lat/lng merge: metros file missing required columns.")
+        print("⚠️ Skipping lat/lng merge: metros file missing required columns.")
         return df
 
     metros["metro_full"] = metros["metro_full"].apply(normalize_city)
@@ -81,10 +87,11 @@ def clean_and_merge(df: pd.DataFrame, metros_path: str | None = "data/raw/usmetr
 
     missing = df[df["lat"].isnull()]["city_full"].unique()
     if len(missing) > 0:
-        print("⚠️  Still missing lat/lng for:", missing)
+        print("⚠️ Still missing lat/lng for:", missing)
     else:
         print("✅ All cities matched with metros dataset.")
     return df
+
 
 
 def drop_duplicates(df: pd.DataFrame) -> pd.DataFrame:
