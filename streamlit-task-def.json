@@ -2,6 +2,7 @@
   "family": "housing-streamlit",
   "networkMode": "awsvpc",
   "executionRoleArn": "arn:aws:iam::261899902410:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::261899902410:role/ecs_s3_access",
   "requiresCompatibilities": [
     "FARGATE"
   ],
