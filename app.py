@@ -2,18 +2,36 @@ import streamlit as st
 import pandas as pd
 import requests
 import plotly.express as px
-
-# app.py (top of file)
-import os
-API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000/predict")
+import boto3, os
+from pathlib import Path
 
 # ============================
 # Config
 # ============================
-API_URL = API_URL
-HOLDOUT_ENGINEERED_PATH = "data/processed/feature_engineered_holdout.csv"
-HOLDOUT_META_PATH = "data/processed/cleaning_holdout.csv"
+API_URL = os.environ.get("API_URL", "http://127.0.0.1:8000/predict")
+S3_BUCKET = os.getenv("S3_BUCKET", "housing-regression-data")
+REGION = os.getenv("AWS_REGION", "eu-west-2")
 
+s3 = boto3.client("s3", region_name=REGION)
+
+def load_from_s3(key, local_path):
+    """Download from S3 if not already cached locally."""
+    local_path = Path(local_path)
+    if not local_path.exists():
+        os.makedirs(local_path.parent, exist_ok=True)
+        st.info(f"📥 Downloading {key} from S3…")
+        s3.download_file(S3_BUCKET, key, str(local_path))
+    return str(local_path)
+
+# Paths (ensure available locally by fetching from S3 if missing)
+HOLDOUT_ENGINEERED_PATH = load_from_s3(
+    "processed/feature_engineered_holdout.csv",
+    "data/processed/feature_engineered_holdout.csv"
+)
+HOLDOUT_META_PATH = load_from_s3(
+    "processed/cleaning_holdout.csv",
+    "data/processed/cleaning_holdout.csv"
+)
 
 # ============================
 # Data loading
@@ -37,7 +55,6 @@ def load_data():
     disp["actual_price"] = fe["price"]
 
     return fe, disp
-
 
 fe_df, disp_df = load_data()
 

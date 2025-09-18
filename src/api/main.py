@@ -2,20 +2,32 @@ from fastapi import FastAPI
 from pathlib import Path
 from typing import List, Dict, Any
 import pandas as pd
+import boto3, os
 
 # Import inference pipeline
 from src.inference_pipeline.inference import predict
 
 # ----------------------------
-# App
+# Config
 # ----------------------------
-app = FastAPI(title="Housing Regression API")
+S3_BUCKET = os.getenv("S3_BUCKET", "housing-regression-data")
+REGION = os.getenv("AWS_REGION", "eu-west-2")
+s3 = boto3.client("s3", region_name=REGION)
+
+def load_from_s3(key, local_path):
+    """Download from S3 if not already cached locally."""
+    local_path = Path(local_path)
+    if not local_path.exists():
+        os.makedirs(local_path.parent, exist_ok=True)
+        print(f"📥 Downloading {key} from S3…")
+        s3.download_file(S3_BUCKET, key, str(local_path))
+    return str(local_path)
 
 # ----------------------------
 # Paths
 # ----------------------------
-MODEL_PATH = Path("models/xgb_best_model.pkl")
-TRAIN_FE_PATH = Path("data/processed/feature_engineered_train.csv")
+MODEL_PATH = Path(load_from_s3("models/xgb_best_model.pkl", "models/xgb_best_model.pkl"))
+TRAIN_FE_PATH = Path(load_from_s3("processed/feature_engineered_train.csv", "data/processed/feature_engineered_train.csv"))
 
 # Load expected training features for alignment
 if TRAIN_FE_PATH.exists():
@@ -24,18 +36,15 @@ if TRAIN_FE_PATH.exists():
 else:
     TRAIN_FEATURE_COLUMNS = None
 
+# ----------------------------
+# App
+# ----------------------------
+app = FastAPI(title="Housing Regression API")
 
-# ----------------------------
-# Root endpoint
-# ----------------------------
 @app.get("/")
 def root():
     return {"message": "Housing Regression API is running 🚀"}
 
-
-# ----------------------------
-# Health endpoint
-# ----------------------------
 @app.get("/health")
 def health():
     status: Dict[str, Any] = {"model_path": str(MODEL_PATH)}
@@ -48,17 +57,8 @@ def health():
             status["n_features_expected"] = len(TRAIN_FEATURE_COLUMNS)
     return status
 
-
-# ----------------------------
-# Predict endpoint
-# ----------------------------
 @app.post("/predict")
 def predict_batch(data: List[dict]):
-    """
-    Accepts raw JSON rows (like holdout.csv).
-    Runs preprocess + feature engineering + model inference.
-    Returns predictions (and echoes actual price if present).
-    """
     if not MODEL_PATH.exists():
         return {"error": f"Model not found at {str(MODEL_PATH)}"}
 
@@ -66,7 +66,6 @@ def predict_batch(data: List[dict]):
     if df.empty:
         return {"error": "No data provided"}
 
-    # Run full inference pipeline (preprocessing + feature engineering inside)
     preds_df = predict(df, model_path=MODEL_PATH)
 
     resp = {"predictions": preds_df["predicted_price"].astype(float).tolist()}
@@ -75,10 +74,7 @@ def predict_batch(data: List[dict]):
 
     return resp
 
-
-# ----------------------------
-# Run batch endpoint
-# ----------------------------
+# Batch runner
 from src.batch.run_monthly import run_monthly_predictions
 
 @app.post("/run_batch")
@@ -90,10 +86,6 @@ def run_batch():
         "output_dir": "data/predictions/"
     }
 
-
-# ----------------------------
-# Latest predictions endpoint
-# ----------------------------
 @app.get("/latest_predictions")
 def latest_predictions(limit: int = 5):
     pred_dir = Path("data/predictions")
