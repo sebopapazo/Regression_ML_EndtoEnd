@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Housing Regression MLE is an end-to-end machine learning pipeline for predicting housing prices using XGBoost. The project follows ML engineering best practices with modular pipelines, experiment tracking via MLflow, containerization, and comprehensive testing.
+Housing Regression MLE is an end-to-end machine learning pipeline for predicting housing prices using XGBoost. The project follows ML engineering best practices with modular pipelines, experiment tracking via MLflow, containerization, AWS cloud deployment, and comprehensive testing. The system includes both a REST API and a Streamlit dashboard for interactive predictions.
 
 ## Architecture
 
@@ -30,7 +30,27 @@ The codebase is organized into distinct pipelines following the flow:
   - `run_monthly.py`: Generates monthly predictions on holdout data
 
 - **`src/api/`**: FastAPI web service
-  - `main.py`: REST API with endpoints for single predictions, batch runs, and health checks
+  - `main.py`: REST API with S3 integration, health checks, prediction endpoints, and batch processing
+
+### Web Applications
+
+- **`app.py`**: Streamlit dashboard for interactive housing price predictions
+  - Real-time predictions via FastAPI integration
+  - Interactive filtering by year, month, and region
+  - Visualization of predictions vs actuals with metrics (MAE, RMSE, % Error)
+  - Yearly trend analysis with highlighted selected periods
+
+### Cloud Infrastructure & Deployment
+
+- **AWS S3 Integration**: Data and model storage in `housing-regression-data` bucket
+- **Amazon ECR**: Container registry for Docker images
+- **Amazon ECS**: Container orchestration with Fargate
+- **Application Load Balancer**: Traffic distribution and routing
+- **CI/CD Pipeline**: Automated deployment via GitHub Actions
+
+#### ECS Services:
+- **housing-api-service**: FastAPI backend (port 8000, 1024 CPU, 3072 MB memory)
+- **housing-streamlit-service**: Streamlit dashboard (port 8501, 512 CPU, 1024 MB memory)
 
 ### Data Leakage Prevention
 
@@ -97,20 +117,29 @@ python src/batch/run_monthly.py
 
 ### API Service
 ```bash
-# Start FastAPI server
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-
-# Using uv (recommended)
+# Start FastAPI server locally
 uv run uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
+
+### Streamlit Dashboard
+```bash
+# Start Streamlit dashboard locally
+streamlit run app.py --server.port 8501 --server.address 0.0.0.0
 ```
 
 ### Docker
 ```bash
-# Build container
+# Build API container
 docker build -t housing-regression .
 
-# Run container
+# Build Streamlit container  
+docker build -t housing-streamlit -f Dockerfile.streamlit .
+
+# Run API container
 docker run -p 8000:8000 housing-regression
+
+# Run Streamlit container
+docker run -p 8501:8501 housing-streamlit
 ```
 
 ### MLflow Tracking
@@ -124,11 +153,17 @@ mlflow ui
 ### Pipeline Modularity
 Each pipeline component can be run independently with consistent interfaces. All modules accept configurable input/output paths for testing isolation.
 
+### Cloud-Native Architecture
+- **S3-First Storage**: Models and data automatically sync from S3 buckets
+- **Containerized Services**: Both API and dashboard run in Docker containers  
+- **Auto-scaling Infrastructure**: ECS Fargate provides serverless container scaling
+- **Environment-based Configuration**: Separate configs for local development and production
+
 ### Encoder Persistence  
 Frequency and target encoders are saved as pickle files during training and loaded during inference to ensure consistent transformations.
 
 ### Configuration Management
-Model parameters, file paths, and pipeline settings use sensible defaults but can be overridden through function parameters or environment variables.
+Model parameters, file paths, and pipeline settings use sensible defaults but can be overridden through function parameters or environment variables. Production deployments use AWS environment variables.
 
 ### Testing Strategy
 - Unit tests for individual pipeline components
@@ -136,11 +171,28 @@ Model parameters, file paths, and pipeline settings use sensible defaults but ca
 - Smoke tests for inference pipeline
 - All tests use temporary directories to avoid touching production data
 
+## Dependencies
+
+Key production dependencies (see `pyproject.toml`):
+- **ML/Data**: `xgboost==3.0.4`, `scikit-learn`, `pandas==2.1.1`, `numpy==1.26.4`
+- **API**: `fastapi`, `uvicorn`
+- **Dashboard**: `streamlit`, `plotly`
+- **Cloud**: `boto3` (AWS integration)
+- **Experimentation**: `mlflow`, `optuna`
+- **Quality**: `great-expectations`, `evidently`
+
 ## File Structure Notes
 
-- **`data/`**: Raw, processed, and prediction data (time-structured)
-- **`models/`**: Trained models and encoders (pkl files)
+- **`data/`**: Raw, processed, and prediction data (time-structured, S3-synced)
+- **`models/`**: Trained models and encoders (pkl files, S3-synced)
 - **`mlruns/`**: MLflow experiment tracking data
 - **`configs/`**: YAML configuration files
 - **`notebooks/`**: Jupyter notebooks for EDA and experimentation
 - **`tests/`**: Comprehensive test suite with sample data
+- **AWS Task Definitions**: `housing-api-task-def.json`, `streamlit-task-def.json`
+- **CI/CD**: `.github/workflows/ci.yml` for automated deployment
+
+## Production URLs
+
+- **API**: `http://housing-api-alb-945997111.eu-west-2.elb.amazonaws.com`
+- **Dashboard**: `http://housing-api-alb-945997111.eu-west-2.elb.amazonaws.com/dashboard`
