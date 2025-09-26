@@ -13,6 +13,7 @@ from src.feature_pipeline.feature_engineering import (
 # =========================
 # load.py – unit test
 # =========================
+# Confirms time-based splitting works.
 def test_load_and_split_data_creates_splits(tmp_path):
     dummy_path = tmp_path / "raw.csv"
     df = pd.DataFrame({
@@ -36,6 +37,7 @@ def test_load_and_split_data_creates_splits(tmp_path):
 # =========================
 # preprocess.py – unit tests
 # =========================
+# Confirms preprocessing functions behave as intended.
 def test_remove_outliers_drops_high_prices():
     df = pd.DataFrame({"median_list_price": [100_000, 500_000, 20_000_000]})
     cleaned = remove_outliers(df)
@@ -64,6 +66,7 @@ def test_clean_and_merge_skips_when_city_missing():
 # =========================
 # feature_engineering – unit tests
 # =========================
+# Confirms feature functions create consistent numeric features and avoid leakage.
 def test_add_date_features_extracts_parts():
     df = pd.DataFrame({"date": ["2020-01-15"]})
     df = add_date_features(df)
@@ -107,6 +110,7 @@ def test_drop_unused_columns_removes_leakage():
 # =========================
 # integration test
 # =========================
+# Confirms the whole feature pipeline works together.
 def test_full_pipeline_integration(tmp_path):
     raw = pd.DataFrame({
         "date": pd.date_range("2018-01-01", periods=6, freq="365D"),
@@ -128,11 +132,12 @@ def test_full_pipeline_integration(tmp_path):
     preprocess_split("train", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None)
     preprocess_split("eval", raw_dir=tmp_path, processed_dir=processed_dir, metros_path=None)
 
-    out_train, out_eval, freq_map, te = run_feature_engineering(
+    out_train, out_eval, out_holdout, freq_map, te = run_feature_engineering(
         in_train_path=processed_dir / "cleaning_train.csv",
         in_eval_path=processed_dir / "cleaning_eval.csv",
         output_dir=processed_dir,
     )
+
 
     assert {"year", "zipcode_freq", "city_full_encoded"}.issubset(out_train.columns)
     assert {"year", "zipcode_freq", "city_full_encoded"}.issubset(out_eval.columns)

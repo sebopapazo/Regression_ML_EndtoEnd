@@ -6,15 +6,18 @@ from src.training_pipeline.train import train_model
 from src.training_pipeline.eval import evaluate_model
 from src.training_pipeline.tune import tune_model
 
+
+# Assumes you already ran feature engineering so the processed CSVs exist.
 TRAIN_PATH = Path("data/processed/feature_engineered_train.csv")
 EVAL_PATH = Path("data/processed/feature_engineered_eval.csv")
 
-
+# Ensuring we have the same keys in metrics dict.
 def _assert_metrics(m):
     assert set(m.keys()) == {"mae", "rmse", "r2"}
     assert all(isinstance(v, float) and math.isfinite(v) for v in m.values())
 
 
+# TRAIN: Trains a quick model (with tiny sample + params to keep tests fast).
 def test_train_creates_model_and_metrics(tmp_path):
     out_path = tmp_path / "xgb_model.pkl"
     # small params + sampling for speed
@@ -31,7 +34,7 @@ def test_train_creates_model_and_metrics(tmp_path):
     assert model is not None
     print("✅ train_model test passed")
 
-
+# EVAL: Trains a model first, then evaluates it on eval set. Confirms evaluation metrics are valid.
 def test_eval_works_with_saved_model(tmp_path):
     # train quick model
     model_path = tmp_path / "xgb_model.pkl"
@@ -46,7 +49,7 @@ def test_eval_works_with_saved_model(tmp_path):
     _assert_metrics(metrics)
     print("✅ evaluate_model test passed")
 
-
+# TUNE: Runs tune_model with only 2 trials (fast for CI).
 def test_tune_saves_best_model(tmp_path):
     model_out = tmp_path / "xgb_best.pkl"
     tracking_dir = tmp_path / "mlruns"

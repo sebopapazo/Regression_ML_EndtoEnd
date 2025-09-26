@@ -10,7 +10,7 @@ Feature engineering: date parts, frequency encoding, target encoding, drop leaka
 from pathlib import Path
 import pandas as pd
 from category_encoders import TargetEncoder
-from joblib import dump
+from joblib import dump #joblib.dump saves encoders/mappings to disk (important for reusing at inference).
 
 PROCESSED_DIR = Path("data/processed")
 MODELS_DIR = Path("models")
@@ -31,6 +31,8 @@ def add_date_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+#Creates a frequency encoding (how often a value appears).
+#Fit only on train, then applied to eval.
 def frequency_encode(train: pd.DataFrame, eval: pd.DataFrame, col: str):
     freq_map = train[col].value_counts()
     train[f"{col}_freq"] = train[col].map(freq_map)
@@ -38,6 +40,8 @@ def frequency_encode(train: pd.DataFrame, eval: pd.DataFrame, col: str):
     return train, eval, freq_map
 
 
+#Uses target encoding (replace category with average of target variable).
+#Fitted only on train (prevents leakage).
 def target_encode(train: pd.DataFrame, eval: pd.DataFrame, col: str, target: str):
     """
     Use TargetEncoder on `col`, consistently name as <col>_encoded.
@@ -60,6 +64,8 @@ def drop_unused_columns(train: pd.DataFrame, eval: pd.DataFrame):
 
 # ---------- pipeline ----------
 
+#Handles full pipeline: 
+#reads cleaned CSVs → applies feature engineering → saves engineered data + encoders.
 def run_feature_engineering(
     in_train_path: Path | str | None = None,
     in_eval_path: Path | str | None = None,

@@ -7,6 +7,8 @@ Inference pipeline for Housing Regression MLE.
 - Returns predictions.
 """
 
+# Raw → preprocess → feature engineering → align schema → model.predict → predictions.
+
 from __future__ import annotations
 import argparse
 from pathlib import Path
@@ -33,7 +35,7 @@ print("📂 Inference using project root:", PROJECT_ROOT)
 # Load training feature columns (strict schema from training dataset)
 if TRAIN_FE_PATH.exists():
     _train_cols = pd.read_csv(TRAIN_FE_PATH, nrows=1)
-    TRAIN_FEATURE_COLUMNS = [c for c in _train_cols.columns if c != "price"]
+    TRAIN_FEATURE_COLUMNS = [c for c in _train_cols.columns if c != "price"]  # excluding price column
 else:
     TRAIN_FEATURE_COLUMNS = None
 
@@ -98,6 +100,7 @@ def predict(
 # ----------------------------
 # CLI entrypoint
 # ----------------------------
+# Allows running inference directly from terminal.
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run inference on new housing data (raw).")
     parser.add_argument("--input", type=str, required=True, help="Path to input RAW CSV file")
