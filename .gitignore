@@ -17,6 +17,9 @@ wheels/
 .env/
 *.env
 
+# AWS credentials folder
+.aws/
+
 # ==========================================
 # Project-specific ignores
 # ==========================================
